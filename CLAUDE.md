@@ -72,4 +72,4 @@
 
 - 开发本仓库时使用 `npm run typecheck`、`npm run build`、`npm test`。
 - 修改 MCP 工具后需要重新构建，并重启 Claude Code 会话以重新加载 MCP 服务器。
-- Windows 节点代理由计划任务以 S4U 方式在开机时启动（Session 0，无需登录，不是 Windows 服务）；锁屏、注销不影响，睡眠、重启会中断运行中的任务。Linux 节点当前为手动启动。
+- Windows 节点代理与 SSH 隧道由计划任务以 S4U 方式在开机时启动（Session 0，无需登录，不是 Windows 服务）；锁屏、注销不影响，睡眠、重启会中断运行中的任务。Linux 节点由 systemd 开机自启，隧道断开后自动重连。

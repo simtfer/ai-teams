@@ -7,7 +7,7 @@
 - 主管 harness：Claude Code
 - 员工 harness：pi 1.3.0
 - 管理入口：Claude Code 会话内的 `ai-teams` MCP 工具，无独立 CLI / Web / 桌面端
-- Windows 节点代理通过计划任务开机自启（S4U，无需登录，不是 Windows 服务）；Linux 节点当前为手动启动的独立进程
+- Windows 节点代理通过计划任务开机自启（S4U，无需登录，不是 Windows 服务）；Linux 节点由 systemd 开机自启，主管端通过计划任务维持 SSH 隧道并自动重连
 - 节点与主管各自使用本地 SQLite，结果通过有序事件日志上报
 
 方案设计见 [docs/ai-teams-solution.md](docs/ai-teams-solution.md)，主管行为规则见 [CLAUDE.md](CLAUDE.md)。
@@ -43,7 +43,7 @@ src/node/          节点代理：配置、SQLite、pi 运行器、调度服务�
 src/supervisor/    主管端：配置、SQLite 缓存、节点客户端、服务层、MCP 入口
 src/shared/        两端共享类型
 config/            配置示例（真实配置被 .gitignore 忽略）
-scripts/           手动启动、登录自启回退与计划任务安装脚本
+scripts/           手动启动、登录自启回退、计划任务与 SSH 隧道安装脚本
 test/              自动化测试与 fake pi 固件
 docs/              方案设计文档
 ```
@@ -244,7 +244,7 @@ pi 的供应商配置放在 `~/.pi/agent/models.json`，`apiKey` 使用环境变
 QIANWEN_API_KEY='<key>'
 ```
 
-### 4. 启动脚本
+### 4. systemd 服务
 
 `/opt/ai-teams/start-agent.sh`（权限设为 `700`）：
 
@@ -258,38 +258,90 @@ export PATH=/opt/ai-teams/node/bin:$PATH
 exec /opt/ai-teams/node/bin/node /opt/ai-teams/app/dist/src/node/agent.js --config /opt/ai-teams/app/config/node.json
 ```
 
-以后台独立会话启动，并记录 PID：
+创建 `/etc/systemd/system/ai-teams-node.service`：
 
-```bash
-mkdir -p /opt/ai-teams/logs
-setsid -f /opt/ai-teams/start-agent.sh >>/opt/ai-teams/logs/node-agent.out 2>&1
-pgrep -f '^/opt/ai-teams/node/bin/node /opt/ai-teams/app/dist/src/node/agent.js' > /opt/ai-teams/node-agent.pid
+```ini
+[Unit]
+Description=AI Teams Node Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ai-teams/app
+ExecStart=/opt/ai-teams/start-agent.sh
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+KillMode=mixed
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
 ```
 
-停止：
+启用并启动：
 
 ```bash
-kill "$(cat /opt/ai-teams/node-agent.pid)"
+systemctl daemon-reload
+systemctl enable --now ai-teams-node.service
+systemctl status ai-teams-node.service
+journalctl -u ai-teams-node.service -f
 ```
 
-节点收到终止信号时会中断运行中的任务；重新启动后，遗留运行任务标记为 `interrupted`，排队任务继续调度。
+脚本最后 `exec` 节点进程，systemd 直接跟踪主进程。`Restart=always` 使节点崩溃后约 5 秒自动重启；服务开机自启，无需用户登录。`KillMode=mixed` 在停止时终止整个 cgroup，pi 子进程随之退出。停止或重启：
+
+```bash
+systemctl restart ai-teams-node.service
+systemctl stop ai-teams-node.service
+```
+
+节点收到终止信号时会中断运行中的任务；重新启动后，遗留运行任务标记为 `interrupted`，排队任务继续调度。服务当前以 `root` 运行，后续可改为专用用户。
 
 ### 5. SSH 隧道与主管端
 
-在主管机器上保持隧道：
+公网服务器只监听回环地址，主管端通过 Windows 计划任务维持 SSH 本地端口转发，无需手动保持终端。
+
+前提：
+
+- Windows 原生 OpenSSH，默认路径 `C:\Windows\System32\OpenSSH\ssh.exe`。
+- SSH 私钥无口令（脚本使用 `BatchMode=yes` 与 `IdentityAgent=none`），且服务器主机密钥已在 `known_hosts` 中。
+- 本地端口 `7398` 未被占用。
+
+以管理员身份安装：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-tunnel-task.ps1 `
+  -SshHost root@<server> `
+  -LocalPort 7398 `
+  -RemotePort 7317 `
+  -IdentityFile C:\Users\<user>\.ssh\id_ed25519
+```
+
+脚本会先测试密钥登录，然后创建计划任务 `AI Teams SSH Tunnel`（开机触发、S4U、无需登录）。生成的启动器使用 `ServerAliveInterval=15`、`ServerAliveCountMax=3` 和 `ExitOnForwardFailure=yes`，SSH 断开后约 10 秒自动重连。默认 `known_hosts` 为 `C:\Users\<user>\.ssh\known_hosts`，日志写入 `data/ssh-tunnel/tunnel.log`。
+
+查看状态、移除：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-tunnel-task.ps1 -Status
+powershell -ExecutionPolicy Bypass -File scripts\install-tunnel-task.ps1 -Remove   # 需管理员
+```
+
+主管配置中该节点的 `baseUrl` 填 `http://127.0.0.1:7398`，`token` 与节点一致。隧道断开期间主管端显示节点离线，可读取本地缓存的任务与结果；恢复后节点重新在线，之前已确认的事件不会重复投递。
+
+调试时也可手动建立隧道：
 
 ```bash
 ssh -N -L 7398:127.0.0.1:7317 root@<server>
 ```
 
-主管配置中该节点的 `baseUrl` 填 `http://127.0.0.1:7398`，`token` 与节点一致。隧道断开期间主管端显示节点离线，可读取本地缓存的任务与结果；恢复后节点重新在线，之前已确认的事件不会重复投递。
-
 安全注意：
 
-- 公网服务器不要把 `host` 改为 `0.0.0.0`，也不要开放 7317 端口。
+- 公网服务器不要把 `host` 改为 `0.0.0.0`，也不要开放 7317 端口；隧道只把远端回环端口转发到本机回环地址。
 - `node.json` 与 `.env` 保持 `600` 权限；pi provider 配置中不写明文密钥。
 - 传输加密由 SSH 提供，应用层仍是 HTTP + Bearer token；TLS 尚未实现。
-- 当前 Linux 节点为手动启动的独立进程，没有 systemd 单元；机器重启后需要重新执行启动脚本并重建隧道。
+- systemd 服务当前以 root 运行；SSH 隧道任务使用安装用户的私钥，密钥 ACL 应只允许该用户、SYSTEM 和 Administrators 读取。
 
 ## 配置说明
 
@@ -340,8 +392,11 @@ npm test
 
 - 员工停用后不能重新启用；需要重新创建员工。
 - 失败不自动重试；拒绝/改派需要新建任务。
-- Windows 已支持计划任务开机自启（S4U，无需登录），但不是 Windows 服务；睡眠、重启仍会中断任务，Linux 节点当前需手动启动且无 systemd 单元。
-- 公网 Linux 节点依赖 SSH 隧道；隧道断开时主管端只能读取缓存，无法派发新任务。
+- Windows 与 Linux 节点均已支持无人登录自启；Windows 端由计划任务启动节点与 SSH 隧道，Linux 节点由 systemd 管理。Windows 侧不是 Windows 服务；睡眠、重启仍会中断正在运行的任务。
+- 公网 Linux 节点依赖 SSH 隧道；隧道断开期间主管端只能读取缓存，无法派发新任务，恢复后自动重连。
+- Linux 节点服务当前以 root 运行；隧道任务使用无口令 SSH 私钥。
+- 隧道任务与节点任务都依赖安装用户的配置和 Windows 计划任务，注销不影响，但删除用户配置或密钥会导致重启后无法启动。
+- Windows 隧道任务的开机触发未单独做整机重启复验；其计划任务模式与已复验的节点任务相同。
 - 主管端缓存用于离线回退，节点在线时以节点数据为准。
 - 主管上下文治理目前依赖“结果只通过 `get_task_result` 注入全文”的边界；超长对话的压缩策略仍待设计。
 - 安全当前仅覆盖局域网 Bearer token 与工作目录白名单，传输加密、审计、凭据轮换等后续再定。
