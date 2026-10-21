@@ -406,18 +406,7 @@ export class SupervisorService {
     }
 
     if (resultText === null) {
-      return {
-        available: false,
-        task: toPublicTask(currentTask, "full", currentEmployeeName),
-        employeeName: currentEmployeeName,
-        node: currentNode,
-        resultText: null,
-        eventSeq,
-        alreadyFetched,
-        message: fetchError
-          ? `Task finished with status ${currentTask.status}, but no result text is available. Node error: ${fetchError}`
-          : `Task finished with status ${currentTask.status}, but no result text is available.`,
-      };
+      resultText = terminalFallbackReport(currentTask, fetchError);
     }
 
     if (eventSeq === null) {
@@ -701,6 +690,16 @@ function toPublicEvent(event: TaskEvent): PublicEvent {
     ackedAt: event.ackedAt,
     hasResult: event.resultText !== null,
   };
+}
+
+function terminalFallbackReport(task: Task, fetchError: string | null): string {
+  const lines = [
+    "No employee result text was produced for this task.",
+    `Status: ${task.status}`,
+  ];
+  if (task.error) lines.push(`Error: ${task.error}`);
+  if (fetchError) lines.push(`Node fetch error: ${fetchError}`);
+  return lines.join("\n");
 }
 
 function now(): string {

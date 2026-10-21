@@ -143,6 +143,50 @@ test("supervisor can cancel a running task", async () => {
 
   const detail = await service.getTask(assigned.task.id);
   assert.equal(detail.task.status, "canceled");
+
+  const canceledResult = await service.getTaskResult(assigned.task.id);
+  assert.equal(canceledResult.available, true);
+  assert.match(canceledResult.resultText ?? "", /No employee result text/);
+  assert.match(canceledResult.resultText ?? "", /Status: canceled/);
+});
+
+test("terminal tasks without result text return an error report and clear pending", async () => {
+  const cwd = createWorkdir(node.workspace, "supervisor-failure");
+  const created = await service.createEmployee({
+    nodeId: node.nodeId,
+    name: "Supervisor Failure",
+    cwd,
+  });
+  const assigned = await service.assignTask({
+    employeeId: created.employee.id,
+    nodeId: node.nodeId,
+    prompt: "MODE:fail",
+    source: "supervisor",
+  });
+
+  const done = await waitFor(
+    async () => {
+      const detail = await service.getTask(assigned.task.id);
+      return TERMINAL.includes(detail.task.status) ? detail : null;
+    },
+    20_000,
+    "failure task to finish",
+  );
+  assert.equal(done.task.status, "failed");
+
+  const pending = await service.listPendingResults();
+  assert.ok(pending.pending.some((item) => item.taskId === assigned.task.id));
+
+  const result = await service.getTaskResult(assigned.task.id);
+  assert.equal(result.available, true);
+  assert.match(result.resultText ?? "", /No employee result text/);
+  assert.match(result.resultText ?? "", /Status: failed/);
+
+  const pendingAfter = await service.listPendingResults();
+  assert.equal(
+    pendingAfter.pending.some((item) => item.taskId === assigned.task.id),
+    false,
+  );
 });
 
 test("offline nodes fall back to cached employees, tasks, and full results", async () => {

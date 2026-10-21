@@ -218,7 +218,7 @@ function registerTools(
     {
       title: "Get task result (full text)",
       description:
-        "Retrieve the employee's COMPLETE final result text for a terminal task, persist it in the supervisor database, inject it into this conversation, and acknowledge the corresponding node event. Never claim or summarize a result without calling this tool first. For needs_input tasks the full text contains the employee's question. This tool does not truncate the result.",
+        "Retrieve the employee's COMPLETE final result text for a terminal task, persist it in the supervisor database, inject it into this conversation, and acknowledge the corresponding node event. If the task ended without employee output (interrupted, canceled, or failed before producing text), this returns a complete status and error report instead. Never claim or summarize a result without calling this tool first. For needs_input tasks the full text contains the employee's question. This tool does not truncate the result.",
       inputSchema: z.object({
         taskId: z.string().describe("Task id"),
       }),
