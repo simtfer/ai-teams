@@ -198,7 +198,7 @@ function registerTools(
     {
       title: "List pending results",
       description:
-        "Synchronize terminal task events from worker nodes and list results that have NOT yet been delivered to the supervisor. Returns metadata only (task, employee, status, event sequence, finish time). Call get_task_result for each task whose full result you need. Works from the supervisor cache when a node is offline.",
+        "Synchronize terminal task events from worker nodes and list results that have NOT yet been delivered to the supervisor. Only tasks that have reached a terminal status are included; running tasks never appear here, so poll get_task or list_tasks first if the task may still be executing. Returns metadata only (task, employee, status, event sequence, finish time). Call get_task_result for each task whose full result you need. Works from the supervisor cache when a node is offline.",
       inputSchema: z.object({
         nodeId: z.string().optional().describe("Only check this node"),
       }),

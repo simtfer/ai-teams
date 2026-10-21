@@ -140,7 +140,7 @@ claude --mcp-config .mcp.json --strict-mcp-config -p "使用 ai-teams 工具列�
 | `list_nodes` | 查看已配置节点及其在线状态、版本 |
 | `list_employees` | 查看员工及状态 |
 | `get_employee` | 查看单个员工 |
-| `create_employee` | 在在线节点创建工作目录并创建员工 |
+| `create_employee` | 在在线节点创建员工（工作目录必须已存在且在允许根目录内） |
 | `disable_employee` | 停用员工（当前不支持重新启用） |
 | `assign_task` | 向员工派发任务，显式员工不可被改派 |
 | `list_tasks` | 查看任务列表（不含结果全文） |

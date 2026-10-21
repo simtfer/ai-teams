@@ -17,7 +17,7 @@
 2. 需要找员工或把名字映射为 id：`list_employees`（默认只列出启用的员工）；必要时 `get_employee`。
 3. 分配任务：`assign_task`。员工一次只跑一个任务，后续任务自动排队。
 4. 查看进度：`get_task` 或 `list_tasks`。
-5. 用户要结果或询问是否完成：先 `list_pending_results`，再对目标任务调用 `get_task_result`。该工具会返回员工完整结果全文，并确认节点事件。
+5. 用户要结果或询问是否完成：先用 `get_task` 或 `list_tasks` 确认任务已到终态。`list_pending_results` 只包含已结束且未读取的任务，运行中的任务不会出现；确认终态后再调用它，并对目标任务调用 `get_task_result`。该工具会返回员工完整结果全文，并确认节点事件。
 6. 用户明确要求停止任务：`cancel_task`。
 
 ## 指派规则
