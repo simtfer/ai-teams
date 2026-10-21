@@ -7,7 +7,7 @@
 - 主管 harness：Claude Code
 - 员工 harness：pi 1.3.0
 - 管理入口：Claude Code 会话内的 `ai-teams` MCP 工具，无独立 CLI / Web / 桌面端
-- Windows 节点代理随用户登录启动，运行在已登录的桌面会话中（不是 Windows 服务）；Linux 节点当前为手动启动的独立进程
+- Windows 节点代理通过计划任务开机自启（S4U，无需登录，不是 Windows 服务）；Linux 节点当前为手动启动的独立进程
 - 节点与主管各自使用本地 SQLite，结果通过有序事件日志上报
 
 方案设计见 [docs/ai-teams-solution.md](docs/ai-teams-solution.md)，主管行为规则见 [CLAUDE.md](CLAUDE.md)。
@@ -43,7 +43,7 @@ src/node/          节点代理：配置、SQLite、pi 运行器、调度服务�
 src/supervisor/    主管端：配置、SQLite 缓存、节点客户端、服务层、MCP 入口
 src/shared/        两端共享类型
 config/            配置示例（真实配置被 .gitignore 忽略）
-scripts/           手动启动与随登录启动脚本
+scripts/           手动启动、登录自启回退与计划任务安装脚本
 test/              自动化测试与 fake pi 固件
 docs/              方案设计文档
 ```
@@ -91,6 +91,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 npm run start:node
 # 或双击 scripts\start-node.cmd
 ```
+
+长期运行建议改用下面的“Windows 开机自启（计划任务）”，无需保持窗口或登录。
 
 健康检查（将 token 替换为实际值）：
 
@@ -150,21 +152,34 @@ claude --mcp-config .mcp.json --strict-mcp-config -p "使用 ai-teams 工具列�
 | `get_task_result` | 获取任务结果全文，并完成投递确认 |
 | `cancel_task` | 取消排队或运行中的任务 |
 
-## 随登录启动
+## Windows 开机自启（计划任务）
 
-为当前用户安装启动快捷方式（登录后自动运行节点代理，窗口最小化）：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install-node-startup.ps1
-```
-
-移除：
+以管理员身份安装：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install-node-startup.ps1 -Remove
+powershell -ExecutionPolicy Bypass -File scripts/install-node-task.ps1
 ```
 
-这只保证“用户已登录”时运行。锁屏不影响任务；注销、睡眠或重启会中断正在运行的任务，节点重启后将其标记为 `interrupted`，排队任务继续调度。暂不提供 Windows 服务模式。
+脚本会创建计划任务 `AI Teams Node Agent`：开机触发、S4U 登录类型（不保存密码、无需用户登录）、隐藏运行，并生成不含密钥的启动器 `data/node-autostart/run-node.cmd`。启动器为节点进程提供固定的 `PATH`、`HOME`、`APPDATA` 等环境变量，并带看门狗：节点进程意外退出后约 10 秒自动拉起；执行移除时会先写入 `stop.flag`，避免看门狗重启。
+
+安装前提与行为：
+
+- 需要管理员权限，并已完成 `npm run build`。
+- 服务端配置必须使用 `token` 或系统级环境变量的 `tokenEnv`；用户级环境变量在 S4U 会话中不可见，脚本会直接拒绝。
+- 安装前会查询节点是否有运行中的任务，有则中止；确认可中断后用 `-Force` 跳过检查。
+- 若存在旧的“随登录启动”快捷方式会自动移除。
+- 安装日志写入 `data/install-node-task.log`，节点输出写入 `data/node-local/logs/node-autostart.log`。
+
+查看状态、移除：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install-node-task.ps1 -Status
+powershell -ExecutionPolicy Bypass -File scripts/install-node-task.ps1 -Remove   # 需管理员
+```
+
+S4U 计划任务运行在 Session 0：无需用户登录，锁屏、注销不影响任务；睡眠、休眠、重启会中断正在运行的任务，恢复后标记为 `interrupted`，排队任务继续调度。这不是 Windows 服务，仍不提供系统服务模式。
+
+如只需登录后自启（无需管理员），可改用回退脚本 `scripts/install-node-startup.ps1`。
 
 ## Linux 节点部署（SSH 隧道）
 
@@ -325,7 +340,7 @@ npm test
 
 - 员工停用后不能重新启用；需要重新创建员工。
 - 失败不自动重试；拒绝/改派需要新建任务。
-- 不支持无人值守服务；Windows 注销/睡眠会中断任务，Linux 节点当前需手动启动且无 systemd 单元。
+- Windows 已支持计划任务开机自启（S4U，无需登录），但不是 Windows 服务；睡眠、重启仍会中断任务，Linux 节点当前需手动启动且无 systemd 单元。
 - 公网 Linux 节点依赖 SSH 隧道；隧道断开时主管端只能读取缓存，无法派发新任务。
 - 主管端缓存用于离线回退，节点在线时以节点数据为准。
 - 主管上下文治理目前依赖“结果只通过 `get_task_result` 注入全文”的边界；超长对话的压缩策略仍待设计。
