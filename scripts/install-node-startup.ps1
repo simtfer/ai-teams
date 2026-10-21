@@ -40,5 +40,5 @@ $shortcut.Save()
 
 Write-Host "Installed startup shortcut: $shortcutPath"
 Write-Host "The agent starts at user logon in the logged-in desktop session."
-Write-Host "Logs: $(Join-Path $projectRoot 'data\node-a\logs\node.log') (adjust dataDir if changed)"
+Write-Host "Logs: <dataDir from config\node.json>\logs\node.log"
 Write-Host "Remove with: powershell -ExecutionPolicy Bypass -File scripts\install-node-startup.ps1 -Remove"

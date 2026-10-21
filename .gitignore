@@ -6,6 +6,7 @@ coverage/
 data/
 logs/
 .tmp/
+workspaces/
 *.db
 *.db-journal
 *.db-wal
