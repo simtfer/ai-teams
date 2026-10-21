@@ -1,0 +1,12 @@
+{
+  "dataDir": "../data/supervisor",
+  "requestTimeoutMs": 15000,
+  "nodes": [
+    {
+      "id": "node-a",
+      "name": "Office PC A",
+      "baseUrl": "http://192.168.1.20:7317",
+      "token": "replace-with-a-long-random-token"
+    }
+  ]
+}

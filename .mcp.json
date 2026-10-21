@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ai-teams": {
+      "command": "node",
+      "args": ["dist/src/supervisor/mcp.js"],
+      "env": {
+        "AI_TEAMS_SUPERVISOR_CONFIG": "config/supervisor.json"
+      }
+    }
+  }
+}

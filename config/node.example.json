@@ -1,0 +1,18 @@
+{
+  "nodeId": "node-a",
+  "name": "Office PC A",
+  "host": "0.0.0.0",
+  "port": 7317,
+  "token": "replace-with-a-long-random-token",
+  "dataDir": "../data/node-a",
+  "allowedRoots": ["D:\\work"],
+  "harnesses": {
+    "pi": {
+      "command": "pi",
+      "args": [],
+      "version": "1.3.0"
+    }
+  },
+  "maxPromptChars": 200000,
+  "version": "0.1.0"
+}

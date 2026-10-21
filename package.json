@@ -1,0 +1,30 @@
+{
+  "name": "ai-teams",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI team orchestration with a Claude Code supervisor and pi workers",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev:node": "tsx src/node/agent.ts --config config/node.json",
+    "dev:mcp": "tsx src/supervisor/mcp.ts",
+    "start:node": "node dist/src/node/agent.js --config config/node.json",
+    "start:mcp": "node dist/src/supervisor/mcp.js",
+    "test": "npm run build && node --test \"dist/test/*.test.js\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "cross-spawn": "7.0.6",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/cross-spawn": "6.0.6",
+    "@types/node": "24.19.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}
